@@ -19,7 +19,8 @@ Description: Reusable functions for the site- and age-stratified survival
     SEER data are included or redistributed.
 License: MIT + file LICENSE
 Imports: 
-    stats
+    stats,
+    survival
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 8.0.0
