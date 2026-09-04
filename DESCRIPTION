@@ -1,0 +1,23 @@
+Package: gistsurv
+Title: Site- and Age-Stratified Survival and Competing-Risk Analysis for
+    GIST
+Version: 0.0.0.9000
+Authors@R: 
+    person("Yue", "Yang", , "shidongran@gmail.com", role = c("aut", "cre"))
+Description: Reusable functions for the site- and age-stratified survival
+    analysis of gastrointestinal stromal tumour (GIST) cohorts assembled
+    from the Surveillance, Epidemiology, and End Results (SEER) programme.
+    The package wraps the steps used in the underlying cohort study:
+    preparation of survival and competing-risk outcome variables, baseline
+    characteristic tables, Kaplan-Meier estimation, Cox proportional
+    hazards models together with proportional-hazards diagnostics,
+    restricted mean survival time (RMST), side-by-side comparison of the
+    three effect estimators (hazard ratio, Kaplan-Meier probability and
+    RMST difference), and competing-risk analysis through cumulative
+    incidence functions and Fine-Gray models. Any example data shipped
+    with the package are simulated and contain no real patient records; no
+    SEER data are included or redistributed.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 8.0.0
