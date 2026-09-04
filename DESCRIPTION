@@ -20,7 +20,8 @@ Description: Reusable functions for the site- and age-stratified survival
 License: MIT + file LICENSE
 Imports: 
     stats,
-    survival
+    survival,
+    survRM2
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 8.0.0
