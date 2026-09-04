@@ -3,7 +3,7 @@ Title: Site- and Age-Stratified Survival and Competing-Risk Analysis for
     GIST
 Version: 0.0.0.9000
 Authors@R: 
-    person("Yue", "Yang", , "shidongran@gmail.com", role = c("aut", "cre"))
+    person("Yue", "Yang", , "yueyangve8@gmail.com", role = c("aut", "cre"))
 Description: Reusable functions for the site- and age-stratified survival
     analysis of gastrointestinal stromal tumour (GIST) cohorts assembled
     from the Surveillance, Epidemiology, and End Results (SEER) programme.
