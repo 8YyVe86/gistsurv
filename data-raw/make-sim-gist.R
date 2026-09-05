@@ -250,3 +250,4 @@ cat("  follow-up (mo)  :", min(sim_gist$time_mo), "-", max(sim_gist$time_mo), "\
 print(tab)
 
 usethis::use_data(sim_gist, overwrite = TRUE)
+
