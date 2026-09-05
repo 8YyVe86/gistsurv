@@ -1,3 +1,4 @@
 ^LICENSE\.md$
 ^gistsurv\.Rproj$
 ^\.Rproj\.user$
+^data-raw$
