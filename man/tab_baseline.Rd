@@ -73,7 +73,7 @@ the same under both.}
 
 \item{big_mark}{Thousands separator for counts, passed to
 \code{\link[base:formatC]{base::formatC()}}. Defaults to \code{""}, i.e. none; house styles that write
-\verb{10 052} or \verb{10,052} pass \code{" "} or \code{","} here rather than having the
+\verb{12 345} or \verb{12,345} pass \code{" "} or \code{","} here rather than having the
 convention baked into the package.}
 
 \item{stat_prefix}{Optional prefix for the group column names, e.g. \code{"n_"}.

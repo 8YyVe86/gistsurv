@@ -184,7 +184,7 @@
 #'   the same under both.
 #' @param big_mark Thousands separator for counts, passed to
 #'   [base::formatC()]. Defaults to `""`, i.e. none; house styles that write
-#'   `10 052` or `10,052` pass `" "` or `","` here rather than having the
+#'   `12 345` or `12,345` pass `" "` or `","` here rather than having the
 #'   convention baked into the package.
 #' @param stat_prefix Optional prefix for the group column names, e.g. `"n_"`.
 #'   Use it when a group level would otherwise collide with one of the fixed
