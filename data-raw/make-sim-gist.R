@@ -21,6 +21,12 @@
 #   able to swap sim_gist for their own extract and have the calls still fit.
 #   Names and level labels are structure, not data.
 #
+#   The cohort is shipped as a *prepared* extract, not a raw one: step 5b
+#   resolves the registry's ambiguous cause-of-death label the same way a user
+#   must resolve it in their own data, so that prep_surv() can run in closed
+#   coding. The two lines that do it are reproduced in ?sim_gist, because they
+#   are a step the user has to take, not one they inherit.
+#
 # HOW TO RUN
 #   Rscript data-raw/make-sim-gist.R
 #   (run from the package root; it rewrites data/sim_gist.rda)
@@ -134,10 +140,10 @@ t_obs   <- pmin(t_gist, t_other, t_admin, t_ltfu)
 died    <- t_obs == pmin(t_gist, t_other) & t_obs < pmin(t_admin, t_ltfu)
 time_mo <- as.numeric(floor(t_obs))   # whole months, as the registry reports
 
-## -- 5. raw outcome columns, in the registry's own coding -------------------
-# The cause-of-death column is deliberately left in its awkward registry form:
-# one value covers both the living and those who died of something else, so it
-# cannot be read on its own. prep_surv() resolves it against vital_status.
+## -- 5. outcome columns, first in the registry's own coding -----------------
+# The cause of death is built in the registry's awkward form -- one value
+# covering both the living and those who died of something else -- and then
+# resolved in step 5b, which is where a real extract would resolve it too.
 COD_ALIVE_OR_OTHER <- "Alive or dead of other cause"
 COD_DEAD_CANCER    <- "Dead (attributable to this cancer dx)"
 COD_DEAD_UNKNOWN   <- "Dead (missing/unknown COD)"
@@ -150,6 +156,32 @@ cause_of_death <- ifelse(of_gist, COD_DEAD_CANCER, COD_ALIVE_OR_OTHER)
 # limitations paragraph has to quote, so the example data must contain some.
 unk <- which(died)[stats::runif(sum(died)) < 0.012]
 cause_of_death[unk] <- COD_DEAD_UNKNOWN
+
+## -- 5b. resolve the registry's ambiguous label -----------------------------
+# "Alive or dead of other cause" is carried by the living AND by those who died
+# of something else. It therefore cannot be handed to prep_surv() as
+# cause_other_value: the function would refuse a declared cause of death on a
+# living subject, and it is right to -- that check is what catches a genuine
+# status/cause contradiction everywhere else.
+#
+# The alternative, leaving it undeclared so that open coding sweeps it into
+# "other cause", would buy the same result at the price of the whole closed
+# set: a registry code nobody anticipated would also become an other-cause
+# death, silently.
+#
+# So the ambiguity is resolved here, in data preparation, where it belongs and
+# where vital_status is right there to resolve it with. What reaches
+# prep_surv() is an unambiguous cause column, and prep_surv() can then run
+# closed -- every admissible value declared, anything else an error.
+#
+# A user starting from their own extract runs exactly these two lines first;
+# see ?sim_gist. No random numbers are drawn below, so this step does not
+# disturb the stream and the rest of the cohort is unchanged by it.
+COD_OTHER <- "Other cause"
+cause_of_death <- ifelse(
+  cause_of_death == COD_ALIVE_OR_OTHER,
+  ifelse(vital_status == "Dead", COD_OTHER, NA_character_),
+  cause_of_death)
 
 sim_gist <- data.frame(
   id             = seq_len(n),
@@ -172,37 +204,46 @@ sim_gist <- data.frame(
 ## -- 6. the properties the rest of the package relies on --------------------
 # If a change to the model above breaks one of these, the examples, tests and
 # vignette break too -- so fail here rather than there.
-tab <- table(sim_gist$site, sim_gist$age_grp)
+tab  <- table(sim_gist$site, sim_gist$age_grp)
+dead <- sim_gist$vital_status == "Dead"
+gist <- sim_gist$cause_of_death %in% COD_DEAD_CANCER
+oth  <- sim_gist$cause_of_death %in% COD_OTHER
 stopifnot(
   "n must be 1200"                = nrow(sim_gist) == 1200L,
-  "no missing outcome"            = !anyNA(sim_gist$time_mo) &&
-                                    !anyNA(sim_gist$vital_status) &&
-                                    !anyNA(sim_gist$cause_of_death),
+  "no missing time or status"     = !anyNA(sim_gist$time_mo) &&
+                                    !anyNA(sim_gist$vital_status),
+  # the two invariants that make closed coding possible downstream
+  "cause is NA exactly on the living" =
+    identical(is.na(sim_gist$cause_of_death), !dead),
+  "every death carries a declared cause" =
+    all(sim_gist$cause_of_death[dead] %in%
+          c(COD_DEAD_CANCER, COD_OTHER, COD_DEAD_UNKNOWN)),
+  "the ambiguous registry label is gone" =
+    !any(sim_gist$cause_of_death %in% COD_ALIVE_OR_OTHER),
   "follow-up non-negative"        = all(sim_gist$time_mo >= 0),
   "every site x age cell used"    = all(tab >= 15L),
-  "deaths between 35% and 55%"    = {
-    d <- mean(sim_gist$vital_status == "Dead"); d > 0.35 && d < 0.55 },
-  "both causes in every site"     = {
-    dead <- sim_gist$vital_status == "Dead"
-    gist <- dead & sim_gist$cause_of_death == COD_DEAD_CANCER
-    oth  <- dead & sim_gist$cause_of_death != COD_DEAD_CANCER
-    all(tapply(gist, sim_gist$site, any)) && all(tapply(oth, sim_gist$site, any)) &&
-      all(tapply(gist, sim_gist$age_grp, any)) && all(tapply(oth, sim_gist$age_grp, any))
-  },
-  "some unknown causes of death"  = sum(sim_gist$cause_of_death == COD_DEAD_UNKNOWN) > 0L,
+  "deaths between 35% and 55%"    = mean(dead) > 0.35 && mean(dead) < 0.55,
+  "both causes in every site and age group" =
+    all(tapply(gist, sim_gist$site, any)) &&
+    all(tapply(oth,  sim_gist$site, any)) &&
+    all(tapply(gist, sim_gist$age_grp, any)) &&
+    all(tapply(oth,  sim_gist$age_grp, any)),
+  "some unknown causes of death"  =
+    sum(sim_gist$cause_of_death %in% COD_DEAD_UNKNOWN) > 0L,
   "tau = 60 admissible everywhere" =
     min(tapply(sim_gist$time_mo, sim_gist$site, max)) > 60 &&
     min(tapply(sim_gist$time_mo, sim_gist$age_grp, max)) > 60,
   "size_grp has missing values"   = anyNA(sim_gist$size_grp),
   "surgery has missing values"    = anyNA(sim_gist$surgery),
-  "enough events per coefficient" = sum(sim_gist$vital_status == "Dead") > 17L * 10L
+  "enough events per coefficient" = sum(dead) > 17L * 10L
 )
 
 cat("sim_gist:", nrow(sim_gist), "rows,", ncol(sim_gist), "columns\n")
-cat("  deaths          :", sum(sim_gist$vital_status == "Dead"),
-    sprintf("(%.1f%%)\n", 100 * mean(sim_gist$vital_status == "Dead")))
-cat("  of the cancer   :", sum(sim_gist$cause_of_death == COD_DEAD_CANCER), "\n")
-cat("  unknown cause   :", sum(sim_gist$cause_of_death == COD_DEAD_UNKNOWN), "\n")
+cat("  alive (cause NA):", sum(!dead), "\n")
+cat("  deaths          :", sum(dead), sprintf("(%.1f%%)\n", 100 * mean(dead)))
+cat("    of the cancer :", sum(gist), "\n")
+cat("    other cause   :", sum(oth), "\n")
+cat("    unknown cause :", sum(sim_gist$cause_of_death %in% COD_DEAD_UNKNOWN), "\n")
 cat("  size_grp missing:", sum(is.na(sim_gist$size_grp)), "\n")
 cat("  surgery missing :", sum(is.na(sim_gist$surgery)), "\n")
 cat("  follow-up (mo)  :", min(sim_gist$time_mo), "-", max(sim_gist$time_mo), "\n")
