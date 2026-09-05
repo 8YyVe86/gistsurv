@@ -34,7 +34,7 @@ the disagreement is itself a finding rather than a nuisance.
 
 ``` r
 # install.packages("remotes")
-remotes::install_github("<user>/gistsurv")
+remotes::install_github("8YyVe86/gistsurv")
 ```
 
 ## 30-second start \| 三十秒上手
