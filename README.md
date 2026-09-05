@@ -8,7 +8,7 @@ from a SEER-based cohort study of gastrointestinal stromal tumour
 (GIST).
 
 按原发部位与年龄分层的生存分析与竞争风险分析。本包由一项基于 SEER 的
-胃肠道间质瘤（GIST）队列研究的分析代码整理而成。
+胃肠道间质瘤（GIST）队列研究的分析代码封装而成。
 
 ------------------------------------------------------------------------
 
@@ -44,13 +44,13 @@ remotes::install_github("<user>/gistsurv")
 
 | Function | What it returns | 做什么 |
 |----|----|----|
-| `prep_surv()` | `time_mo`, `event_os`, `event_cr` from raw registry columns | 由登记处的原始列构造生存与竞争风险结局 |
-| `tab_baseline()` | Table 1 with standardized mean differences | 基线特征表，报 SMD 而非 p 值 |
-| `fit_km()` | medians, survival at fixed times, log-rank, reverse-KM follow-up | 中位生存、时点生存率、log-rank、反向 KM 随访 |
+| `prep_surv()` | `time_mo`, `event_os`, `event_cr` from raw registry columns | 由登记处的原始字段构造生存与竞争风险结局 |
+| `tab_baseline()` | Table 1 with standardized mean differences | 基线特征表，报标准化均值差（SMD）而非 p 值 |
+| `fit_km()` | medians, survival at fixed times, log-rank, reverse-KM follow-up | 中位生存、时点生存率、log-rank、反向 KM 随访（即逆向 Kaplan–Meier 法估计中位随访时间） |
 | `fit_cox()` | hazard ratios **with** the proportional-hazards test | 风险比，并强制附上 PH 假定检验 |
 | `calc_rmst()` | RMST per arm, difference, ratio, RMTL ratio | 各臂 RMST、差值、比值、RMTL 比 |
 | `compare_estimands()` | the three estimands side by side, plus a verdict | 三个估计量并排 + 一致性判定 |
-| `fit_competing()` | CIF, Gray’s test, Fine–Gray, cause-specific Cox | 累积发生率、Gray 检验、Fine–Gray、死因特异 Cox |
+| `fit_competing()` | CIF, Gray’s test, Fine–Gray, cause-specific Cox | 累积发生率（CIF）、Gray 检验、Fine–Gray、死因别 Cox |
 
 Every function returns a data frame and **prints nothing**; diagnostics
 travel back as attributes. No column name is hard-coded — every variable
@@ -129,8 +129,8 @@ estimator you chose to report. Three of these six are like that.
 
 六个预先设定的对比，每行一个，横轴统一取 60
 个月。横着读一行：某一格实心、
-另一格空心，就意味着这个对比的结论取决于你选了哪个估计量来报。
-六个里有三个是这样。
+另一格空心，就意味着这个对比的结论取决于你选用哪个估计量。
+六个里有三个如此。
 
     #>                     contrast n_significant
     #> 1 Small intestine vs Stomach             0
@@ -154,7 +154,7 @@ the event of interest, and the three estimators absorb that differently.
 `fit_competing()` separates the two.
 
 死于其他原因的人会离开风险集，但那并不是我们关心的事件；三个估计量对这件事
-的吸收方式不同。`fit_competing()` 把两者拆开。
+的处理方式不同。`fit_competing()` 把两者拆开。
 
 ``` r
 fc <- fit_competing(d, group = "age_grp", covariates = "age_grp", times = 60,
@@ -179,8 +179,8 @@ other-cause one rises by an order of magnitude. An overall-survival
 comparison adds the two together and reports the sum as though it
 described the disease.
 
-随年龄变化，本病的亚分布风险几乎不动，而他因的上升了一个数量级。总生存的
-比较把两者加在一起，然后把这个和当作对本病的描述来报告。
+随年龄变化，本病的亚分布风险比（sHR）几乎不动，而他因的上升了一个数量级。
+总生存的比较把两者加在一起，把相加后的结果当作对本病的描述来报告。
 
 ## What the functions refuse to do \| 函数拒绝做的事
 
@@ -193,7 +193,7 @@ described the disease.
   be computed. 无法算出 PH 检验时，拒绝返回风险比。
 - `calc_rmst()` — a `tau` past the follow-up of either arm.
   `survRM2::rmst2()` on its own returns a number there. 超出任一臂随访的
-  `tau`。直接调 `survRM2::rmst2()` 是会照算的。
+  `tau`。若直接调用 `survRM2::rmst2()`，该函数是会照常计算的。
 - `fit_competing()` — an `event_os` that contradicts `event_cr`, checked
   before anything is fitted. 与 `event_cr` 矛盾的
   `event_os`，在拟合任何模型之前查。
