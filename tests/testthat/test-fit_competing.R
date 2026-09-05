@@ -97,3 +97,40 @@ test_that("an event_os that contradicts event_cr stops the call", {
                c(0L, 0L))
   expect_equal(chk$counts$n[chk$counts$event_os == 1L & chk$counts$event_cr == 0L], 0L)
 })
+
+test_that("the outcome codes are arguments, not assumptions", {
+  d <- prep_sim()
+
+  # Re-code the outcome away from the 0/1/2 default entirely: censoring 9,
+  # the disease 4, other causes 7. Nothing about the estimates should change.
+  # Without this the codes could be hard-wired anywhere downstream and every
+  # other test would still pass, because every other test uses the default.
+  e <- d
+  e$cr9 <- c(9L, 4L, 7L)[d$event_cr + 1L]
+
+  a <- fit_competing(d, group = "site", times = c(12, 60),
+                     cause_specific = "skip")
+  b <- fit_competing(e, group = "site", event_cr = "cr9",
+                     causes = c(4, 7), censor_code = 9,
+                     times = c(12, 60), cause_specific = "skip")
+
+  expect_equal(b$cif,     a$cif,     tolerance = 1e-12)
+  expect_equal(b$cif_lcl, a$cif_lcl, tolerance = 1e-12)
+  expect_equal(b$cif_ucl, a$cif_ucl, tolerance = 1e-12)
+  expect_equal(b$gray_p,  a$gray_p,  tolerance = 1e-12)
+  expect_equal(b$n_event_cause, a$n_event_cause)
+  expect_equal(b$cause, rep(c(4, 7), each = nrow(b) / 2)[order(order(b$cause))])
+
+  # the labels travel with the codes
+  lab <- fit_competing(e, group = "site", event_cr = "cr9",
+                       causes = c(4, 7), censor_code = 9,
+                       cause_labels = c("GIST death", "Other death"),
+                       times = 12, cause_specific = "skip")
+  expect_setequal(unique(lab$cause_label), c("GIST death", "Other death"))
+
+  # and a code that is declared but absent, or present but undeclared, is an
+  # error rather than a silently empty cause
+  expect_error(fit_competing(e, group = "site", event_cr = "cr9",
+                             causes = c(4, 7), censor_code = 0, times = 12),
+               "0|censor")
+})
