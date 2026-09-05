@@ -1,0 +1,328 @@
+---
+title: "Three ways to state the same survival difference"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Three ways to state the same survival difference}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 7,
+                      fig.height = 4.2, fig.align = "center")
+options(width = 88)
+library(gistsurv)
+```
+
+A survival difference between two groups can be reported as a hazard ratio, as
+a difference in survival probability at a fixed horizon, or as a difference in
+restricted mean survival time. The three are not interchangeable. They can
+differ in size, in statistical significance and, occasionally, in sign, and
+which one you report changes what a reader takes away.
+
+This vignette walks through a full analysis on `sim_gist`, a simulated cohort
+that ships with the package, and shows where the three estimators agree, where
+they part company, and what a competing-risk analysis says about why.
+
+`sim_gist` is synthetic. Every parameter behind it is a literal in
+`data-raw/make-sim-gist.R`; it is not a sample of any registry and no
+epidemiological claim can be read off it. What is realistic about it is its
+*shape* -- the variable names, the levels, the missingness, the awkward
+cause-of-death coding -- which is what makes it a fair rehearsal for a real
+extract.
+
+## Preparing the outcome
+
+Registry data arrives with a follow-up time, a vital status and a cause of
+death, not with event indicators. `prep_surv()` builds them.
+
+One step comes first. Registries commonly code cause of death with a value that
+is carried by living subjects *and* by those who died of something else --
+here, `"Alive or dead of other cause"`. That value cannot be declared to
+`prep_surv()` as a cause of death, because the function refuses a declared
+cause of death on a living subject, and it is right to: the same check is what
+catches a genuine contradiction everywhere else. Resolve it first, against
+vital status:
+
+```r
+raw$cause_of_death <- ifelse(
+  raw$cause_of_death == "Alive or dead of other cause",
+  ifelse(raw$vital_status == "Dead", "Other cause", NA),
+  raw$cause_of_death)
+```
+
+`sim_gist` ships with those two lines already applied, so we can go straight
+on. With the column unambiguous, every admissible value can be declared, and
+an unexpected code stops the call instead of being folded into "death from
+other causes".
+
+```{r prep}
+d <- prep_surv(
+  sim_gist,
+  time                = "time_mo",
+  status              = "vital_status",
+  cause               = "cause_of_death",
+  cause_gist_value    = "Dead (attributable to this cancer dx)",
+  cause_other_value   = "Other cause",
+  cause_unknown_value = "Dead (missing/unknown COD)",
+  cause_censor_value  = NA,
+  cause_unknown_to    = 2L
+)
+
+attr(d, "os_cr_table")
+```
+
+Nothing is printed by the function itself. The cross-tabulation above is an
+attribute, and it is the first thing to look at: the off-diagonal cells must be
+empty, or the two outcome variables contradict each other. `prep_surv()`
+enforces that before returning, so an empty off-diagonal here is a check that
+ran, not a coincidence.
+
+The counts include the figure a limitations paragraph has to quote -- how many
+deaths carried no usable cause and were therefore assigned to a category
+rather than observed in it:
+
+```{r prep-counts}
+unlist(attr(d, "prep_surv")$counts)
+```
+
+## Who is in the cohort
+
+```{r table1}
+t1 <- tab_baseline(
+  d, by = "site",
+  vars = c("age", "age_grp", "sex", "size_grp", "stage", "surgery")
+)
+head(t1[, c("label", "stat_label", "Overall", "Stomach", "Small intestine",
+            "Colorectal", "smd_fmt")], 12)
+```
+
+The standardized mean difference is reported instead of a p-value. With more
+than two groups it is the largest absolute SMD over all pairs, and `smd_pair`
+names the pair, so one badly imbalanced pair is not diluted by the others.
+
+## One contrast, three estimators
+
+Take stomach against small intestine. First the Kaplan-Meier curves and the
+median:
+
+```{r km}
+k <- fit_km(d, group = "site", times = c(12, 36, 60))
+k[, c("stratum", "n", "events", "median_ci_txt", "median_fu_revkm", "max_fu")]
+```
+
+Median follow-up is the reverse Kaplan-Meier estimate, not the median of the
+observed times: the latter is a summary of when people left the study, which
+in a cohort with deaths is not the same question.
+
+Then the hazard ratio, with the proportional-hazards test that has to
+accompany it:
+
+```{r cox}
+cx <- fit_cox(d, covariates = c("site", "age_grp", "sex", "size_grp", "surgery"))
+cx[cx$variable == "site", c("level", "n", "n_event", "hr_txt", "p_fmt")]
+
+zph <- attr(cx, "cox_zph")
+zph[, c("term", "chisq", "df", "p_fmt", "violates")]
+```
+
+A hazard ratio is a single number standing in for a whole curve. It is worth
+that only if the ratio is roughly constant over time, which is what the test
+above is for. `fit_cox()` will not return hazard ratios whose assumption was
+never tested: if `cox.zph()` cannot produce a test -- as happens with
+`transform = "log"` when there are events at time zero, which registry extracts
+have -- the call stops rather than returning a missing test that reads like a
+passed one.
+
+Then the restricted mean survival time, which needs no proportionality
+assumption because it is just an area under the curve:
+
+```{r rmst}
+r <- calc_rmst(d, group = "site", arms = c("Stomach", "Small intestine"),
+               tau = c(12, 36, 60))
+r[, c("tau", "rmst_arm0_txt", "rmst_arm1_txt", "rmst_diff_txt",
+      "rmst_diff_p_fmt")]
+```
+
+It does need a horizon, and the horizon has to be one the data support. The
+area up to `tau` is not defined past the largest follow-up time in either arm,
+so `calc_rmst()` refuses rather than extrapolating:
+
+```{r rmst-guard, error = TRUE}
+calc_rmst(d, group = "site", arms = c("Stomach", "Colorectal"), tau = 400)
+```
+
+This guard is the reason to use the wrapper: `survRM2::rmst2()` on its own
+will return a number there.
+
+## The three side by side
+
+`compare_estimands()` does all of the above for one contrast and lines the
+answers up, with a verdict on whether they agree:
+
+```{r compare}
+ce <- compare_estimands(d, group = "site",
+                        arms = c("Stomach", "Small intestine"),
+                        tau = c(12, 36, 60))
+ce[, c("tau", "hr_txt", "km_surv_diff_txt", "rmst_diff_txt", "verdict")]
+```
+
+The hazard ratio does not depend on `tau`, so it is repeated on every row; the
+other two do, and are not. That is the first thing the table shows: two of the
+three estimators answer a question that contains a horizon, and one does not.
+
+Run it over several contrasts and the spread becomes visible.
+
+```{r sweep}
+contrasts <- list(
+  c("site",    "Stomach",   "Small intestine"),
+  c("site",    "Stomach",   "Colorectal"),
+  c("age_grp", "<50",       "65-74"),
+  c("age_grp", "<50",       "75+"),
+  c("sex",     "Male",      "Female"),
+  c("stage",   "Localized", "Regional")
+)
+
+sweep <- do.call(rbind, lapply(contrasts, function(p) {
+  z <- compare_estimands(d, group = p[1], arms = p[2:3], tau = 60)
+  data.frame(contrast = z$comparison, hr = z$hr_txt,
+             km = z$km_surv_diff_txt, rmst = z$rmst_diff_txt,
+             n_sig = z$n_signif, verdict = substr(z$verdict, 1, 46))
+}))
+sweep[, c("contrast", "n_sig", "verdict")]
+```
+
+Three of these six contrasts are discordant at 60 months, and they are
+discordant in different ways. Male versus female is significant on the survival
+difference and on the RMST difference but not on the hazard ratio. Localized
+versus regional stage is the opposite: significant on the hazard ratio alone.
+Reporting any one of the three and stopping would have produced a different
+paper.
+
+```{r sweep-plot, echo = FALSE}
+op <- par(mar = c(4.2, 11, 2.4, 1.2))
+h <- sapply(contrasts, function(p) {
+  z <- compare_estimands(d, group = p[1], arms = p[2:3], tau = 60)
+  c(z$rmst_diff, z$rmst_diff_lcl, z$rmst_diff_ucl)
+})
+lab <- sweep$contrast
+y <- seq_along(lab)
+plot(h[1, ], y, xlim = range(h, 0), ylim = c(0.5, length(y) + 0.5),
+     pch = 19, yaxt = "n", ylab = "", bty = "n",
+     xlab = "RMST difference at 60 months (months)",
+     main = "Arm 1 minus arm 0")
+segments(h[2, ], y, h[3, ], y)
+abline(v = 0, lty = 3)
+axis(2, at = y, labels = lab, las = 1, cex.axis = 0.8, tick = FALSE)
+par(op)
+```
+
+## Why they disagree
+
+A hazard ratio and an RMST difference can point different ways when the
+competing risks differ between the groups: deaths from other causes remove
+people from the risk set without being the event of interest, and the two
+estimators absorb that differently.
+
+`fit_competing()` splits the deaths by cause and estimates a cumulative
+incidence for each.
+
+```{r cif}
+fc <- fit_competing(d, group = "age_grp", covariates = "age_grp",
+                    times = c(12, 36, 60),
+                    cause_labels = c("Disease", "Other causes"),
+                    cause_specific = "skip")
+full <- fc[fc$analysis_set == "full" & fc$time == 60, ]
+full[, c("group", "cause_label", "n_group", "n_event_cause", "cif", "cif_lcl",
+         "cif_ucl")]
+```
+
+The point of the table is the contrast between the two panels below. The
+cumulative incidence of death from the disease moves around without much
+pattern across the age groups. The cumulative incidence of death from other
+causes climbs steadily and by 75 and over is the larger of the two. Most of
+what an overall-survival analysis counts in that group is not the disease at
+all.
+
+```{r cif-plot, echo = FALSE, fig.height = 3.8}
+op <- par(mfrow = c(1, 2), mar = c(4.2, 4.2, 2.6, 1))
+for (cs in unique(full$cause_label)) {
+  s <- full[full$cause_label == cs, ]
+  b <- barplot(s$cif, names.arg = s$group, ylim = c(0, max(full$cif_ucl) * 1.1),
+               xlab = "Age group", ylab = "Cumulative incidence at 60 months",
+               main = cs, las = 1)
+  arrows(b, s$cif_lcl, b, s$cif_ucl, angle = 90, code = 3, length = 0.05)
+}
+par(op)
+```
+
+The share of deaths that are not from the disease is the quantity an
+overall-survival comparison silently averages over:
+
+```{r share}
+share <- do.call(rbind, lapply(split(full, full$group), function(s) {
+  data.frame(age_grp = s$group[1],
+             other_share_pct = round(
+               100 * s$cif[s$cause_label == "Other causes"] / sum(s$cif), 1))
+}))
+share
+```
+
+Fine-Gray models put the same comparison on a regression footing. The
+`covariates` argument is what asks for them; without it the call returns
+cumulative incidences only, and `attr(fc, "finegray")` is `NULL`.
+
+```{r finegray}
+fg <- attr(fc, "finegray")
+fg[fg$variable == "age_grp",
+   c("cause_label", "level", "n", "n_event_cause", "shr_txt", "p_fmt")]
+```
+
+The two columns of subdistribution hazard ratios are the point. Across age the
+disease-specific one barely moves; the other-cause one rises by an order of
+magnitude. An overall-survival comparison adds those two together and reports
+the sum as though it described the disease.
+
+That is the mechanism behind the one discordant age contrast above. At 65-74
+versus under 50 the hazard ratio and the survival difference at 60 months are
+both significant while the RMST difference is not: the hazard ratio accumulates
+the excess mortality over the whole of follow-up, where the other-cause
+component has had time to dominate, whereas the restricted mean over a fixed 60
+months weights the early part of the curve, where it has not.
+
+## What the functions refuse to do
+
+Every function in the package returns a data frame and prints nothing;
+diagnostics come back as attributes. Several also stop rather than return a
+number that would be read as an estimate:
+
+- `prep_surv()` stops on a cause of death it was not told about, on a living
+  subject carrying a cause of death, and on `cause_unknown_to = 0`, which would
+  censor a dead subject in one outcome column while the other records a death.
+- `fit_km()` stops on a requested time point past a stratum's follow-up, unless
+  told to return `NA` there instead.
+- `fit_cox()` stops when the proportional-hazards test cannot be computed, and
+  drops a declared factor level that no row has rather than fitting an all-zero
+  design column.
+- `calc_rmst()` stops on a `tau` past the follow-up of either arm. The boundary
+  is inclusive: `tau` exactly equal to the largest usable value is estimated.
+- `fit_competing()` re-checks the two outcome columns against each other before
+  anything is fitted, so a pair that has drifted apart -- each column still
+  valid on its own -- is caught.
+
+```{r refuse, error = TRUE}
+prep_surv(sim_gist, time = "time_mo", status = "vital_status",
+          cause = "cause_of_death",
+          cause_gist_value  = "Dead (attributable to this cancer dx)",
+          cause_other_value = "Other cause")
+```
+
+The last call fails because `"Dead (missing/unknown COD)"` was never declared.
+That is the intended behaviour: with the set of admissible causes closed, a
+code the analysis has not accounted for is an error, not a silent recode.
+
+## Session
+
+```{r session}
+sessionInfo()
+```
