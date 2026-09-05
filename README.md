@@ -3,35 +3,32 @@
 
 # gistsurv
 
-Site- and age-stratified survival and competing-risk analysis, packaged
-from a SEER-based cohort study of gastrointestinal stromal tumour
-(GIST).
+`gistsurv` reports a survival difference three ways at once — hazard
+ratio, survival difference at a fixed horizon, and restricted mean
+survival time difference — and tells you whether the three agree.
 
-按原发部位与年龄分层的生存分析与竞争风险分析。本包由一项基于 SEER 的
-胃肠道间质瘤（GIST）队列研究的分析代码封装而成。
+`gistsurv` 把同一个生存差距用三种方式同时报出来 ——
+风险比、固定时点的生存率 之差、限制平均生存时间（RMST）之差 ——
+并告诉你三者是否一致。
 
-------------------------------------------------------------------------
+## Why \| 为什么需要它
 
-## What it is for \| 做什么用
+A hazard ratio is one number standing in for a whole curve, and it means
+what it claims only if the ratio stays roughly constant over time — an
+assumption that fails quietly and often. It also has no horizon built
+into it, so it cannot answer the question a patient actually asks: how
+much longer, on average, over the next five years. The restricted mean
+survival time answers exactly that, assumes no proportionality, and is
+denominated in months — so when it parts company with the hazard ratio,
+the disagreement is itself a finding rather than a nuisance.
 
-A survival difference between two groups can be reported as a hazard
-ratio, as a difference in survival probability at a fixed horizon, or as
-a difference in restricted mean survival time. The three are not
-interchangeable: they can differ in size, in significance, and
-occasionally in sign. This package computes all three side by side,
-states whether they agree, and — when they do not — lets a
-competing-risk analysis say why.
-
-同一个生存差距，可以用风险比（HR）、某个时点的生存率之差、或限制平均生存
-时间（RMST）之差来表达。三者并不等价：大小、显著性、偶尔连方向都会不同。
-本包把三者并排算出来，给出一致性判定；不一致时，用竞争风险分析回答为什么。
-
-**No SEER data are included or redistributed.** The example dataset is
-simulated; every parameter behind it is a literal in
-`data-raw/make-sim-gist.R`.
-
-**本包不包含、也不转发任何 SEER 数据。** 示例数据是模拟生成的，
-每一个参数都写在 `data-raw/make-sim-gist.R` 里。
+风险比是用一个数去代表整条曲线，只有当这个比值随时间大致恒定时它才名副其实
+——
+而这个假定经常悄无声息地不成立。它本身也不含时间跨度，因此回答不了病人真正
+关心的问题：在未来五年里，平均能多活多久。RMST
+恰好回答这个问题，不需要比例 风险假定，而且单位就是月 ——
+所以当它与风险比给出不同结论时，这个分歧本身就是
+一项发现，而不是需要掩盖的麻烦。
 
 ## Installation \| 安装
 
@@ -39,6 +36,51 @@ simulated; every parameter behind it is a literal in
 # install.packages("remotes")
 remotes::install_github("<user>/gistsurv")
 ```
+
+## 30-second start \| 三十秒上手
+
+``` r
+library(gistsurv)
+
+d  <- prep_surv(sim_gist, cause = "cause_of_death",
+                cause_gist_value    = "Dead (attributable to this cancer dx)",
+                cause_other_value   = "Other cause",
+                cause_unknown_value = "Dead (missing/unknown COD)",
+                cause_censor_value  = NA)
+
+ce <- compare_estimands(d, group = "sex", arms = c("Male", "Female"),
+                        tau = c(6, 12, 24, 36, 48, 60))
+
+ce[, c("tau", "hr_txt", "km_surv_diff_txt", "rmst_diff_txt")]
+#>   tau           hr_txt  km_surv_diff_txt      rmst_diff_txt
+#> 1   6 0.89 (0.76-1.05) 0.6 (-1.3 to 2.5) -0.0 (-0.1 to 0.1)
+#> 2  12 0.89 (0.76-1.05)  3.9 (1.3 to 6.6)  0.1 (-0.0 to 0.3)
+#> 3  24 0.89 (0.76-1.05)  3.7 (0.3 to 7.0)   0.6 (0.1 to 1.1)
+#> 4  36 0.89 (0.76-1.05) 3.5 (-0.4 to 7.5)   1.0 (0.2 to 1.9)
+#> 5  48 0.89 (0.76-1.05)  4.7 (0.2 to 9.1)   1.6 (0.3 to 2.9)
+#> 6  60 0.89 (0.76-1.05) 5.5 (0.7 to 10.4)   2.2 (0.4 to 3.9)
+
+matplot(ce$tau, ce[, c("hr_p", "km_surv_diff_p", "rmst_diff_p")], type = "b",
+        log = "y", pch = 16, lty = 1, lwd = 2, col = c("grey40", "#1b6ca8", "#c1543a"),
+        xlab = "horizon tau (months)", ylab = "p value (log scale)",
+        main = "One contrast, three estimators, six horizons")
+abline(h = 0.05, lty = 3)
+legend("topright", c("hazard ratio", "survival difference", "RMST difference"),
+       col = c("grey40", "#1b6ca8", "#c1543a"), lwd = 2, bty = "n")
+```
+
+<img src="man/figures/README-quickstart-1.png" alt="" width="100%" />
+
+Same data, same contrast. The hazard ratio is a flat line because it has
+no horizon: one number, p = 0.170, whatever you ask it about. The other
+two cross 0.05 at different places, so the conclusion depends on which
+estimator is reported and at which horizon — which is the thing this
+package exists to make visible rather than to hide.
+
+同一份数据、同一个对比。风险比是一条水平线，因为它本身不含时间跨度：无论问
+哪个时点，都是同一个数（p = 0.170）。另外两个则在 不同的位置跨过 0.05 ——
+结论取决于你报哪个估计量、报哪个时点。把这件事显示
+出来，正是本包存在的理由。
 
 ## The seven functions \| 七个函数
 
@@ -52,159 +94,48 @@ remotes::install_github("<user>/gistsurv")
 | `compare_estimands()` | the three estimands side by side, plus a verdict | 三个估计量并排 + 一致性判定 |
 | `fit_competing()` | CIF, Gray’s test, Fine–Gray, cause-specific Cox | 累积发生率（CIF）、Gray 检验、Fine–Gray、死因别 Cox |
 
-Every function returns a data frame and **prints nothing**; diagnostics
+Every function returns a data frame and prints nothing; diagnostics
 travel back as attributes. No column name is hard-coded — every variable
 is an argument. An undeclared value is an error, never a silent recode.
+Several calls stop rather than return a number that would be read as an
+estimate: a `tau` past the follow-up of either arm, a time point past a
+stratum’s follow-up, a hazard ratio whose proportional-hazards test
+could not be computed, an `event_os` that contradicts `event_cr`. The
+full walkthrough is
+`vignette("compare-estimands", package = "gistsurv")`.
 
-每个函数都返回 data frame 且**不打印任何东西**，诊断信息挂在 attributes
-上。
-没有任何列名写死在代码里，变量一律作为参数传入。没有声明过的取值一律报错，
-绝不静默改编码。
+每个函数都返回 data frame 且不打印任何东西，诊断信息挂在 attributes
+上。没有
+任何列名写死在代码里，变量一律作为参数传入。没有声明过的取值一律报错，绝不
+静默改编码。若某个数字一旦返回就会被当成估计值来读，函数宁可停机：超出任一臂
+随访的 `tau`、超出某一层随访的时点、算不出 PH 检验的风险比、与
+`event_cr` 矛盾的 `event_os`。完整走查见
+`vignette("compare-estimands", package = "gistsurv")`。
 
-## A worked example \| 一个完整例子
+## Paper and data statement \| 关联论文与数据声明
 
-``` r
-library(gistsurv)
+This package packages the analysis code of a study of site- and
+age-stratified survival and competing-risk mortality in gastrointestinal
+stromal tumour, using the SEER Research Data (17 registries, diagnoses
+2000–2019). Manuscript in preparation; this section will carry the
+citation and DOI once they exist.
 
-# sim_gist arrives as a registry extract does: a follow-up time, a vital
-# status, and a cause of death. prep_surv() builds the event indicators.
-# sim_gist 的形态就是登记处导出的样子：随访时间、生存状态、死因。
-# 由 prep_surv() 构造事件指示变量。
-d <- prep_surv(
-  sim_gist,
-  time                = "time_mo",
-  status              = "vital_status",
-  cause               = "cause_of_death",
-  cause_gist_value    = "Dead (attributable to this cancer dx)",
-  cause_other_value   = "Other cause",
-  cause_unknown_value = "Dead (missing/unknown COD)",
-  cause_censor_value  = NA,
-  cause_unknown_to    = 2L
-)
+本包封装的是一项研究的分析代码：胃肠道间质瘤按原发部位与年龄分层的生存与竞争
+风险死亡分析，数据为 SEER Research Data（17 个登记处，诊断年
+2000–2019）。 论文撰写中；正式发表后本节将补上引用与 DOI。
 
-# the event_os x event_cr cross-check, enforced before the data are returned
-# 返回前强制核对的 event_os x event_cr 交叉表
-attr(d, "os_cr_table")
-#>         event_cr
-#> event_os   0   1   2
-#>        0 636   0   0
-#>        1   0 332 232
-```
+**The example dataset `sim_gist` is simulated. This package contains no
+individual-level SEER data and does not distribute any.** Every
+parameter behind `sim_gist` is a literal in `data-raw/make-sim-gist.R`,
+which opens no file; the dataset shares no record with any real cohort.
+Using the package on SEER data requires your own Research Data Use
+Agreement with the National Cancer Institute.
 
-``` r
-ce <- compare_estimands(d, group = "sex", arms = c("Male", "Female"),
-                        tau = c(12, 36, 60))
-ce[, c("tau", "hr_txt", "km_surv_diff_txt", "rmst_diff_txt", "verdict")]
-#>   tau           hr_txt  km_surv_diff_txt     rmst_diff_txt
-#> 1  12 0.89 (0.76-1.05)  3.9 (1.3 to 6.6) 0.1 (-0.0 to 0.3)
-#> 2  36 0.89 (0.76-1.05) 3.5 (-0.4 to 7.5)  1.0 (0.2 to 1.9)
-#> 3  60 0.89 (0.76-1.05) 5.5 (0.7 to 10.4)  2.2 (0.4 to 3.9)
-#>                                                                                     verdict
-#> 1  DISCORDANT (significance): 1 of 3 significant, same direction (HR ns / KM sig / RMST ns)
-#> 2  DISCORDANT (significance): 1 of 3 significant, same direction (HR ns / KM ns / RMST sig)
-#> 3 DISCORDANT (significance): 2 of 3 significant, same direction (HR ns / KM sig / RMST sig)
-```
-
-Same contrast, same data, three answers — and, in two of the three, a
-different answer at each horizon. The hazard ratio has no horizon and is
-not significant. The survival difference is significant at 12 and 60
-months but not at 36. The RMST difference is the other way round: not
-significant at 12, significant at 36 and 60. A paper that reported one
-estimator at one horizon could have concluded almost anything here.
-
-同一个对比、同一份数据，三个答案 ——
-而且其中两个还随时点变。风险比没有时点， 不显著；生存率之差在 12 和 60
-个月显著、36 个月不显著；RMST 之差反过来， 12 个月不显著、36 和 60
-个月显著。只报一个估计量、一个时点的话，这里几乎
-想得出什么结论就能得出什么结论。
-
-## Where the three estimators part company \| 三者在哪里分道扬镳
-
-<img src="man/figures/README-forest-1.png" alt="" width="100%" />
-
-Six pre-specified contrasts, one row each, the same 60-month horizon
-throughout. Read across a row: a row that is filled in one panel and
-hollow in another is a contrast whose conclusion depends on which
-estimator you chose to report. Three of these six are like that.
-
-六个预先设定的对比，每行一个，横轴统一取 60
-个月。横着读一行：某一格实心、
-另一格空心，就意味着这个对比的结论取决于你选用哪个估计量。
-六个里有三个如此。
-
-    #>                     contrast n_significant
-    #> 1 Small intestine vs Stomach             0
-    #> 2      Colorectal vs Stomach             3
-    #> 3               65-74 vs <50             2
-    #> 4                 75+ vs <50             3
-    #> 5             Female vs Male             2
-    #> 6      Regional vs Localized             1
-    #>                                                verdict
-    #> 1 concordant: all three non-significant, same directio
-    #> 2    concordant: all three significant, same direction
-    #> 3 DISCORDANT (significance): 2 of 3 significant, same 
-    #> 4    concordant: all three significant, same direction
-    #> 5 DISCORDANT (significance): 2 of 3 significant, same 
-    #> 6 DISCORDANT (significance): 1 of 3 significant, same
-
-## Why they disagree \| 为什么会不一致
-
-Deaths from other causes remove people from the risk set without being
-the event of interest, and the three estimators absorb that differently.
-`fit_competing()` separates the two.
-
-死于其他原因的人会离开风险集，但那并不是我们关心的事件；三个估计量对这件事
-的处理方式不同。`fit_competing()` 把两者拆开。
-
-``` r
-fc <- fit_competing(d, group = "age_grp", covariates = "age_grp", times = 60,
-                    cause_labels = c("Disease", "Other causes"),
-                    cause_specific = "skip")
-fg <- attr(fc, "finegray")
-fg[fg$variable == "age_grp", c("cause_label", "level", "n_event_cause",
-                               "shr_txt", "p_fmt")]
-#>    cause_label level n_event_cause            shr_txt  p_fmt
-#> 1      Disease   <50            66   1.00 (reference)   <NA>
-#> 2      Disease 50-64            99   0.80 (0.59-1.08)  0.151
-#> 3      Disease 65-74            92   0.98 (0.72-1.34)  0.917
-#> 4      Disease   75+            75   1.01 (0.73-1.41)  0.948
-#> 5 Other causes   <50            11   1.00 (reference)   <NA>
-#> 6 Other causes 50-64            45   2.33 (1.21-4.50)  0.011
-#> 7 Other causes 65-74            65   4.56 (2.41-8.62) <0.001
-#> 8 Other causes   75+           111 11.65 (6.27-21.65) <0.001
-```
-
-Across age the disease-specific subdistribution hazard barely moves; the
-other-cause one rises by an order of magnitude. An overall-survival
-comparison adds the two together and reports the sum as though it
-described the disease.
-
-随年龄变化，本病的亚分布风险比（sHR）几乎不动，而他因的上升了一个数量级。
-总生存的比较把两者加在一起，把相加后的结果当作对本病的描述来报告。
-
-## What the functions refuse to do \| 函数拒绝做的事
-
-- `prep_surv()` — an undeclared cause of death; a living subject
-  carrying a cause of death; `cause_unknown_to = 0`.
-  未声明的死因；活人带着死因；`cause_unknown_to = 0`。
-- `fit_km()` — a time point past a stratum’s follow-up, unless told to
-  return `NA` there. 超出某一层随访的时点，除非明确要求返回 `NA`。
-- `fit_cox()` — hazard ratios whose proportional-hazards test could not
-  be computed. 无法算出 PH 检验时，拒绝返回风险比。
-- `calc_rmst()` — a `tau` past the follow-up of either arm.
-  `survRM2::rmst2()` on its own returns a number there. 超出任一臂随访的
-  `tau`。若直接调用 `survRM2::rmst2()`，该函数是会照常计算的。
-- `fit_competing()` — an `event_os` that contradicts `event_cr`, checked
-  before anything is fitted. 与 `event_cr` 矛盾的
-  `event_os`，在拟合任何模型之前查。
-
-## Documentation \| 文档
-
-``` r
-vignette("compare-estimands", package = "gistsurv")   # the full walkthrough
-?sim_gist                                              # the example data
-```
-
-## License \| 许可
+**示例数据 `sim_gist` 为模拟生成。本包不含也不分发任何 SEER 个案数据。**
+`sim_gist` 背后的每一个参数都写死在 `data-raw/make-sim-gist.R`
+里，该脚本不
+读取任何文件；这份数据与任何真实队列没有一条记录重合。若要把本包用于
+SEER 数据，需你自己与美国国立癌症研究所签署 Research Data Use
+Agreement。
 
 MIT © Yue Yang

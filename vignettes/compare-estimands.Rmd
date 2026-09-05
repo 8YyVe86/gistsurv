@@ -152,8 +152,11 @@ so `calc_rmst()` refuses rather than extrapolating:
 calc_rmst(d, group = "site", arms = c("Stomach", "Colorectal"), tau = 400)
 ```
 
-This guard is the reason to use the wrapper: `survRM2::rmst2()` on its own
-will return a number there.
+`survRM2::rmst2()` draws the line in the same place, and refuses too. What
+the wrapper adds is that the limit is checked for the whole `tau` vector
+before anything is fitted, is reported back as the `tau_upper` column, and is
+computed the same way `fit_km()` computes it -- so the two functions cannot
+disagree about what is admissible.
 
 ## The three side by side
 

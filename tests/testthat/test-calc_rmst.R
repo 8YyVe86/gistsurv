@@ -48,11 +48,16 @@ test_that("tau past the follow-up of an arm is refused, and tau at the edge is n
   expect_error(calc_rmst(d, group = "site", arms = arms,
                          tau = c(12, 36, edge + 1)), "follow-up")
 
-  # this is what the guard is for: survRM2 on its own extrapolates instead of
-  # complaining, so the wrapper has to be the one that refuses
+  # survRM2 draws the line in exactly the same place, so the guard is not
+  # stricter than the engine underneath it. What the wrapper adds is that the
+  # whole tau vector is checked up front, that the limit comes back as a
+  # column, and that the message says what the limit is.
+  arm <- as.integer(d$site == "Colorectal")
   expect_no_error(survRM2::rmst2(time = d$time_mo, status = d$event_os,
-                                 arm = as.integer(d$site == "Colorectal"),
-                                 tau = edge))
+                                 arm = arm, tau = edge))
+  expect_error(survRM2::rmst2(time = d$time_mo, status = d$event_os,
+                              arm = arm, tau = edge + 1))
+  expect_equal(ok$tau_upper[1], min(tapply(d$time_mo, droplevels(d$site), max)))
 })
 
 test_that("an arm too small to estimate warns but still returns its numbers", {

@@ -1,7 +1,7 @@
 Package: gistsurv
 Title: Site- and Age-Stratified Survival and Competing-Risk Analysis for
     GIST
-Version: 0.0.0.9000
+Version: 0.1.0
 Authors@R: 
     person("Yue", "Yang", , "yueyangve8@gmail.com", role = c("aut", "cre"))
 Description: Reusable functions for the site- and age-stratified survival
